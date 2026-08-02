@@ -1,12 +1,43 @@
 <!DOCTYPE html>
-<html lang="ja"><head><meta charset="UTF-8"><title>プレゼンター</title><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script></head>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>シンポジウム - プロジェクター画面</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body { background-color: #0a0a0a; color: #ffffff; font-family: sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        .main-container { width: 90%; max-width: 1200px; border: 5px solid #ffaa00; border-radius: 15px; padding: 40px; margin-top: 20px; }
+        .controls { background: #222; padding: 20px; border-radius: 10px; margin-bottom: 30px; text-align: center; }
+        button { font-size: 1.2em; padding: 12px 24px; margin: 5px; cursor: pointer; border-radius: 8px; font-weight: bold; }
+        h1 { font-size: 2.8em; color: #ffff00; }
+        .bar-bg { background-color: #222; border-radius: 10px; height: 50px; width: 100%; }
+        .bar-fill { background-color: #ffff00; height: 100%; width: 50%; }
+    </style>
+</head>
 <body>
-<div id="qrcode"></div><h1 id="qText">読み込み中...</h1><div id="res"></div>
-<button onclick="socket.emit('adminStartVoting')">開始</button><button onclick="socket.emit('adminCloseVoting')">終了</button>
-<script src="/socket.io/socket.io.js"></script>
-<script>
-const socket = io();
-new QRCode(document.getElementById("qrcode"), window.location.origin + '/mobile.html');
-socket.on('stateUpdate', d => { document.getElementById('qText').innerText = d.question.text; });
-</script>
-</body></html>
+    <div class="controls">
+        <p>【主催者パネル】</p>
+        <button id="btnPrev">◀ 前の質問</button>
+        <span id="qNumIndicator" style="margin: 0 20px;">Q 1/8</span>
+        <button id="btnNext">次の質問 ▶</button>
+        <button id="btnStart" style="background:#00ffaa">▶ 質問を発出</button>
+        <button id="btnEnd" style="background:#ff0055; color:#fff">■ 締め切り</button>
+    </div>
+    <div class="main-container">
+        <h1 id="questionText">質問文を読み込んでいます</h1>
+        <div id="resultsArea"></div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        socket.on('stateUpdate', (data) => {
+            document.getElementById('questionText').innerText = data.question.text;
+            document.getElementById('qNumIndicator').innerText = `Q ${data.questionIndex + 1}/8`;
+        });
+        document.getElementById('btnStart').onclick = () => socket.emit('adminStartVoting');
+        document.getElementById('btnEnd').onclick = () => socket.emit('adminCloseVoting');
+        document.getElementById('btnNext').onclick = () => socket.emit('adminChangeQuestion', 1);
+        document.getElementById('btnPrev').onclick = () => socket.emit('adminChangeQuestion', -1);
+    </script>
+</body>
+</html>
