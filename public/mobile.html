@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>投票</title></head>
+<body>
+<h2 id="qText">待機中...</h2><div id="ops"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+socket.on('stateUpdate', d => {
+    document.getElementById('qText').innerText = d.question.text;
+    const ops = document.getElementById('ops'); ops.innerHTML = '';
+    d.question.options.forEach((opt, i) => {
+        const b = document.createElement('button'); b.innerText = opt;
+        b.onclick = () => socket.emit('submitVote', i);
+        ops.appendChild(b);
+    });
+});
+</script>
+</body></html>
