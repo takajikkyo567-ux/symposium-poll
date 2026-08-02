@@ -2,43 +2,52 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>プレゼンター</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <title>シンポジウム - プロジェクター画面</title>
     <style>
-        body { background: #0a0a0a; color: #fff; font-family: sans-serif; text-align: center; }
-        .panel { background: #222; padding: 20px; border-radius: 10px; display: inline-block; }
-        button { font-size: 1.5em; padding: 15px 30px; margin: 5px; cursor: pointer; }
+        body { background-color: #0a0a0a; color: #fff; font-family: sans-serif; margin: 0; padding: 20px; }
+        .controls { background: #222; padding: 20px; border-radius: 10px; margin-bottom: 30px; text-align: center; border: 1px solid #444; }
+        button { font-size: 1.2em; padding: 12px 24px; margin: 5px; cursor: pointer; border-radius: 8px; font-weight: bold; }
+        .btn-start { background-color: #00ffaa; color: #000; }
+        .btn-end { background-color: #ff0055; color: #fff; }
+        #resultsArea { color: #ffff00; font-size: 2em; margin-top: 40px; }
     </style>
 </head>
 <body>
-    <div class="panel">
-        <button id="prev">◀ 前</button>
-        <span id="qNum">Q</span>
-        <button id="next">次 ▶</button>
-        <button id="start" style="background:#00ffaa">開始</button>
-        <button id="end" style="background:#ff0055; color:#fff">終了</button>
+    <div class="controls">
+        <p>【主催者パネル】</p>
+        <button id="btnPrev">◀ 前の質問</button>
+        <span id="qNumIndicator" style="margin:0 20px; font-size:1.5em;">Q 1/8</span>
+        <button id="btnNext">次の質問 ▶</button>
+        <button class="btn-start" id="btnStart">▶ 質問を発出</button>
+        <button class="btn-end" id="btnEnd">■ 締め切り（笛）</button>
     </div>
-    <h1 id="qText">読み込み中...</h1>
+    <h1 id="questionText" style="color:#ffff00; font-size:2.8em;">質問を読み込み中...</h1>
+    <div id="resultsArea"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+        // 音を鳴らす機能
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
         function playSound(type) {
             const osc = audioCtx.createOscillator();
-            osc.connect(audioCtx.destination);
-            osc.frequency.value = type === 'start' ? 880 : 220;
-            osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+            const gain = audioCtx.createGain();
+            osc.frequency.value = type === 'start' ? 440 : 220;
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 1);
         }
 
-        socket.on('stateUpdate', d => {
-            document.getElementById('qText').innerText = d.question.text;
-            document.getElementById('qNum').innerText = `Q ${d.questionIndex + 1}/8`;
+        socket.on('stateUpdate', (data) => {
+            document.getElementById('questionText').innerText = data.question.text;
+            document.getElementById('qNumIndicator').innerText = `Q ${data.questionIndex + 1}/8`;
         });
-
-        document.getElementById('start').onclick = () => { playSound('start'); socket.emit('adminStartVoting'); };
-        document.getElementById('end').onclick = () => { playSound('end'); socket.emit('adminCloseVoting'); };
-        document.getElementById('next').onclick = () => socket.emit('adminChangeQuestion', 1);
-        document.getElementById('prev').onclick = () => socket.emit('adminChangeQuestion', -1);
+        
+        document.getElementById('btnStart').onclick = () => { playSound('start'); socket.emit('adminStartVoting'); };
+        document.getElementById('btnEnd').onclick = () => { playSound('end'); socket.emit('adminCloseVoting'); };
+        document.getElementById('btnNext').onclick = () => socket.emit('adminChangeQuestion', 1);
+        document.getElementById('btnPrev').onclick = () => socket.emit('adminChangeQuestion', -1);
     </script>
 </body>
 </html>
