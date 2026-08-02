@@ -30,42 +30,46 @@
         new QRCode(document.getElementById("qrcode"), window.location.origin + '/mobile.html');
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
 
-        function playSound(type) {
-            const now = ctx.currentTime;
-            if (type === 'start') {
-                [440, 554, 659].forEach((f, i) => {
-                    const o = ctx.createOscillator(); const g = ctx.createGain();
-                    o.frequency.value = f; g.gain.setValueAtTime(0.3, now);
-                    g.gain.exponentialRampToValueAtTime(0.001, now + 1);
-                    o.connect(g); g.connect(ctx.destination); o.start(now + i*0.1); o.stop(now + 1);
-                });
-            } else if (type === 'end') {
-                [2000, 2100].forEach(f => {
-                    const o = ctx.createOscillator(); const g = ctx.createGain();
-                    o.type = 'square'; o.frequency.value = f;
-                    g.gain.setValueAtTime(0.2, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-                    o.connect(g); g.connect(ctx.destination); o.start(now); o.stop(now + 0.5);
-                });
-            }
+        // 締め切り笛音（運動会風）
+        function playWhistle() {
+            [2700, 2750].forEach(f => {
+                const o = ctx.createOscillator(); const g = ctx.createGain();
+                o.type = 'triangle'; o.frequency.value = f;
+                g.gain.setValueAtTime(0, ctx.currentTime);
+                g.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.1);
+                g.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.9);
+                g.gain.linearRampToValueAtTime(0, ctx.currentTime + 1.0);
+                o.connect(g); g.connect(ctx.destination);
+                o.start(); o.stop(ctx.currentTime + 1.0);
+            });
         }
 
-        let drumSource = null;
-        document.getElementById('btnDrum').onclick = function() {
-            if (!drumSource) {
-                drumSource = ctx.createOscillator(); drumSource.type = 'sawtooth';
-                drumSource.frequency.value = 80; drumSource.connect(ctx.destination); drumSource.start();
-                this.innerText = '🥁 ドラム停止';
+        // ドラムロール（ホワイトノイズ＋ピッチ変動）
+        let drumInterval = null;
+        function toggleDrum(btn) {
+            if (!drumInterval) {
+                drumInterval = setInterval(() => {
+                    const b = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate);
+                    const data = b.getChannelData(0);
+                    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+                    const src = ctx.createBufferSource(); src.buffer = b;
+                    const filter = ctx.createBiquadFilter(); filter.type = 'bandpass'; filter.frequency.value = 200;
+                    src.connect(filter); filter.connect(ctx.destination); src.start();
+                }, 50);
+                btn.innerText = '🥁 ドラム停止';
             } else {
-                drumSource.stop(); drumSource = null; this.innerText = '🥁 ドラムロール';
+                clearInterval(drumInterval); drumInterval = null;
+                btn.innerText = '🥁 ドラムロール';
             }
-        };
+        }
 
         socket.on('stateUpdate', d => {
             document.getElementById('qText').innerText = d.question.text;
             document.getElementById('qNum').innerText = `Q ${d.questionIndex + 1}/8`;
         });
-        document.getElementById('btnStart').onclick = () => { playSound('start'); socket.emit('adminStartVoting'); };
-        document.getElementById('btnEnd').onclick = () => { playSound('end'); socket.emit('adminCloseVoting'); };
+        document.getElementById('btnStart').onclick = () => { socket.emit('adminStartVoting'); };
+        document.getElementById('btnEnd').onclick = () => { playWhistle(); socket.emit('adminCloseVoting'); };
+        document.getElementById('btnDrum').onclick = function() { toggleDrum(this); };
         document.getElementById('btnNext').onclick = () => socket.emit('adminChangeQuestion', 1);
         document.getElementById('btnPrev').onclick = () => socket.emit('adminChangeQuestion', -1);
     </script>
