@@ -3,47 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <title>シンポジウム - プロジェクター画面</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
-        body { background-color: #0a0a0a; color: #fff; font-family: sans-serif; margin: 0; padding: 20px; }
-        .controls { background: #222; padding: 20px; border-radius: 10px; margin-bottom: 30px; text-align: center; border: 1px solid #444; }
-        button { font-size: 1.2em; padding: 12px 24px; margin: 5px; cursor: pointer; border-radius: 8px; font-weight: bold; }
-        .btn-start { background-color: #00ffaa; color: #000; }
-        .btn-end { background-color: #ff0055; color: #fff; }
-        #resultsArea { color: #ffff00; font-size: 2em; margin-top: 40px; }
+        body { background-color: #0a0a0a; color: #ffffff; font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        .main-container { width: 90%; max-width: 1200px; border: 5px solid transparent; border-radius: 15px; background-image: linear-gradient(#0a0a0a, #0a0a0a), linear-gradient(to right, #ff0055, #ffaa00, #00ffaa, #00aaff, #aa00ff); background-origin: border-box; background-clip: padding-box, border-box; padding: 40px; margin-top: 20px; }
+        .controls { background: #222; padding: 20px; border-radius: 10px; margin-bottom: 30px; border: 1px solid #444; text-align: center; }
+        button { font-size: 1.2em; padding: 12px 24px; margin: 5px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; }
+        .bar-container { margin-bottom: 25px; }
+        .bar-label-area { display: flex; justify-content: space-between; font-size: 1.8em; margin-bottom: 10px; font-weight: bold; color: #ffff00; }
+        .bar-bg { background-color: #222; border-radius: 10px; width: 100%; height: 50px; overflow: hidden; border: 1px solid #444; }
+        .bar-fill { background-color: #ffff00; height: 100%; width: 0%; transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
+        #qrModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.85); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; }
+        .qr-box { background-color: #fff; padding: 40px; border-radius: 20px; text-align: center; }
     </style>
 </head>
 <body>
-    <div class="controls">
-        <p>【主催者パネル】</p>
-        <button id="btnPrev">◀ 前の質問</button>
-        <span id="qNumIndicator" style="margin:0 20px; font-size:1.5em;">Q 1/8</span>
-        <button id="btnNext">次の質問 ▶</button>
-        <button class="btn-start" id="btnStart">▶ 質問を発出</button>
-        <button class="btn-end" id="btnEnd">■ 締め切り（笛）</button>
+    <div id="qrModal" onclick="this.style.display='none'">
+        <div class="qr-box"><h2>スマホで参加</h2><div id="qrcode-large"></div></div>
     </div>
-    <h1 id="questionText" style="color:#ffff00; font-size:2.8em;">質問を読み込み中...</h1>
-    <div id="resultsArea"></div>
+
+    <div class="controls">
+        <button id="btnPrev">◀ 前の質問</button>
+        <span id="qNumIndicator" style="font-size: 1.5em; margin: 0 20px;">Q 1/8</span>
+        <button id="btnNext">次の質問 ▶</button>
+        <button id="btnStart" style="background:#00ffaa">▶ 質問を発出</button>
+        <button id="btnDrum" style="background:#aa00ff; color:#fff">🥁 ドラムロール</button>
+        <button id="btnEnd" style="background:#ff0055; color:#fff">■ 締め切り（笛）</button>
+        <button onclick="document.getElementById('qrModal').style.display='flex'">📱 QR表示</button>
+    </div>
+
+    <div class="main-container">
+        <h1 id="questionText" style="color:#ffff00; font-size:2.8em;">質問文を読み込み中...</h1>
+        <div id="resultsArea"></div>
+    </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        // 音を鳴らす機能
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        new QRCode(document.getElementById("qrcode-large"), { text: window.location.origin + '/mobile.html', width: 250, height: 250 });
+
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        let drumSource = null;
+
         function playSound(type) {
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.frequency.value = type === 'start' ? 440 : 220;
-            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1);
-            osc.connect(gain); gain.connect(audioCtx.destination);
-            osc.start(); osc.stop(audioCtx.currentTime + 1);
+            const osc1 = ctx.createOscillator(); const osc2 = ctx.createOscillator(); const gain = ctx.createGain();
+            osc1.type = 'triangle'; osc2.type = 'triangle';
+            osc1.frequency.setValueAtTime(type === 'start' ? 880 : 220, ctx.currentTime);
+            osc2.frequency.setValueAtTime(type === 'start' ? 890 : 225, ctx.currentTime);
+            gain.gain.setValueAtTime(0.2, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1);
+            osc1.connect(gain); osc2.connect(gain); gain.connect(ctx.destination);
+            osc1.start(); osc2.start(); osc1.stop(ctx.currentTime + 1); osc2.stop(ctx.currentTime + 1);
         }
+
+        document.getElementById('btnDrum').onclick = function() {
+            if (!drumSource) {
+                drumSource = ctx.createOscillator(); drumSource.type = 'sawtooth';
+                drumSource.frequency.setValueAtTime(150, ctx.currentTime);
+                drumSource.connect(ctx.destination); drumSource.start();
+                this.innerText = '🥁 ドラム停止';
+            } else {
+                drumSource.stop(); drumSource = null;
+                this.innerText = '🥁 ドラムロール';
+            }
+        };
 
         socket.on('stateUpdate', (data) => {
             document.getElementById('questionText').innerText = data.question.text;
             document.getElementById('qNumIndicator').innerText = `Q ${data.questionIndex + 1}/8`;
+            const area = document.getElementById('resultsArea'); area.innerHTML = '';
+            data.question.options.forEach((opt, i) => {
+                area.innerHTML += `<div class="bar-container"><div class="bar-label-area"><span>${opt}</span></div><div class="bar-bg"><div class="bar-fill" style="width: ${data.votes[i] * 10}%;"></div></div></div>`;
+            });
         });
-        
+
         document.getElementById('btnStart').onclick = () => { playSound('start'); socket.emit('adminStartVoting'); };
         document.getElementById('btnEnd').onclick = () => { playSound('end'); socket.emit('adminCloseVoting'); };
         document.getElementById('btnNext').onclick = () => socket.emit('adminChangeQuestion', 1);
