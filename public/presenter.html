@@ -3,83 +3,292 @@
 <head>
     <meta charset="UTF-8">
     <title>シンポジウム - プロジェクター画面</title>
+    <!-- QRコード生成ライブラリ -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
     <style>
-        body { background: #0a0a0a; color: #fff; font-family: sans-serif; margin: 0; padding: 20px; text-align: center; }
-        .controls { background: #222; padding: 20px; border-radius: 10px; display: inline-block; border: 1px solid #444; }
-        button { font-size: 1.2em; padding: 12px 24px; margin: 5px; cursor: pointer; border-radius: 8px; font-weight: bold; }
-        #qrModal { display: none; position: fixed; top:0; left:0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 999; flex-direction: column; align-items: center; justify-content: center; }
-        .qr-box { background: #fff; padding: 40px; border-radius: 20px; color: #000; }
+        body { background-color: #0a0a0a; color: #ffffff; font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        .main-container { width: 90%; max-width: 1200px; border: 5px solid transparent; border-radius: 15px; background-image: linear-gradient(#0a0a0a, #0a0a0a), linear-gradient(to right, #ff0055, #ffaa00, #00ffaa, #00aaff, #aa00ff); background-origin: border-box; background-clip: padding-box, border-box; padding: 40px; margin-top: 20px; position: relative; }
+        .neon-yellow { color: #ffff00; text-shadow: 0 0 15px rgba(255, 255, 0, 0.6); }
+        h1 { font-size: 2.8em; margin-bottom: 40px; line-height: 1.3; }
+        .status-indicator { font-size: 2em; font-weight: bold; margin-bottom: 30px; text-align: right; }
+        
+        .controls { background: #222; padding: 20px; border-radius: 10px; margin-bottom: 30px; border: 1px solid #444; width: 90%; max-width: 1200px; text-align: center;}
+        button { font-size: 1.2em; padding: 12px 24px; margin: 5px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; transition: opacity 0.2s;}
+        button:hover { opacity: 0.8; }
+        .btn-start { background-color: #00ffaa; color: #000; }
+        .btn-end { background-color: #ff0055; color: #fff; }
+        .btn-nav { background-color: #555; color: #fff; }
+        .btn-drum { background-color: #aa00ff; color: #fff; }
+        .btn-qr { background-color: #ffffff; color: #000; border: 2px solid #ccc; }
+
+        .bar-container { margin-bottom: 25px; }
+        .bar-label-area { display: flex; justify-content: space-between; font-size: 1.8em; margin-bottom: 10px; font-weight: bold; }
+        .bar-bg { background-color: #222; border-radius: 10px; width: 100%; height: 50px; overflow: hidden; border: 1px solid #444; }
+        .bar-fill { background-color: #ffff00; height: 100%; width: 0%; transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1); box-shadow: 0 0 20px rgba(255, 255, 0, 0.8); }
+
+        #qrModal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.85); z-index: 9999;
+            flex-direction: column; align-items: center; justify-content: center;
+        }
+        .qr-box {
+            background-color: #fff; padding: 40px; border-radius: 20px; text-align: center;
+            max-width: 90%; max-height: 90vh; overflow: auto;
+        }
+        .qr-box h2 { color: #000; margin-top: 0; font-size: 2em; margin-bottom: 20px;}
+        .close-qr {
+            margin-top: 25px; padding: 15px 40px; font-size: 1.2em; font-weight: bold;
+            background-color: #ff0055; color: #fff; border: none; border-radius: 10px; cursor: pointer;
+        }
     </style>
 </head>
 <body>
-    <div id="qrModal" onclick="this.style.display='none'"><div class="qr-box"><h2>スマホで参加</h2><div id="qrcode"></div></div></div>
-    <div class="controls">
-        <button id="btnPrev">◀ 前</button>
-        <span id="qNum" style="margin:0 20px;">Q 1/8</span>
-        <button id="btnNext">次 ▶</button>
-        <button id="btnStart" style="background:#00ffaa">▶ 質問を発出</button>
-        <button id="btnDrum" style="background:#aa00ff; color:#fff">🥁 ドラムロール</button>
-        <button id="btnEnd" style="background:#ff0055; color:#fff">■ 締め切り（笛）</button>
-        <button onclick="document.getElementById('qrModal').style.display='flex'">📱 QR表示</button>
-    </div>
-    <h1 id="qText" style="color:#ffff00; font-size:3em;">読み込み中...</h1>
     
+    <!-- 大画面QRコード（待機時用） -->
+    <div id="qrModal">
+        <div class="qr-box">
+            <h2>お手元のスマホでご参加ください</h2>
+            <div id="qrcode-large" style="display: flex; justify-content: center;"></div>
+            <button class="close-qr" onclick="toggleQR()">閉じる</button>
+        </div>
+    </div>
+
+    <div class="controls">
+        <p style="margin-top:0; color:#aaa; font-size:1.1em;">【主催者パネル】※プロジェクターには枠線から下を映してください</p>
+        <button class="btn-nav" id="btnPrev">◀ 前の質問</button>
+        <span style="font-size: 1.5em; margin: 0 20px;" id="qNumIndicator">Q 1/8</span>
+        <button class="btn-nav" id="btnNext">次の質問 ▶</button>
+        <span style="margin: 0 20px;">|</span>
+        <button class="btn-start" id="btnStart">▶ 質問を発出</button>
+        <button class="btn-drum" id="btnDrum" onclick="toggleDrumRoll()">🥁 ドラムロール</button>
+        <button class="btn-end" id="btnEnd">■ 締め切り（笛）</button>
+        <span style="margin: 0 20px;">|</span>
+        <button class="btn-qr" onclick="toggleQR()">📱 参加QRコードを大画面に表示</button>
+    </div>
+
+    <div class="main-container">
+        <div class="status-indicator" id="statusDisplay">待機中...</div>
+        <h1 class="neon-yellow" id="questionText">質問文を読み込んでいます</h1>
+        <div id="resultsArea"></div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io();
-        new QRCode(document.getElementById("qrcode"), window.location.origin + '/mobile.html');
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const mobileUrl = window.location.origin + '/mobile.html';
+        new QRCode(document.getElementById("qrcode-large"), { 
+            text: mobileUrl, width: 250, height: 250, 
+            colorDark : "#000000", colorLight : "#ffffff", correctLevel : QRCode.CorrectLevel.L 
+        });
 
-        function playStartSound() {
-            [130.81, 164.81, 196.00].forEach((f, i) => {
-                const o = ctx.createOscillator(); const g = ctx.createGain();
-                o.type = 'sawtooth'; o.frequency.value = f;
-                g.gain.setValueAtTime(0.3, ctx.currentTime + i*0.1);
-                g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i*0.1 + 1.2);
-                o.connect(g); g.connect(ctx.destination);
-                o.start(ctx.currentTime + i*0.1); o.stop(ctx.currentTime + i*0.1 + 1.2);
-            });
+        function toggleQR() {
+            const modal = document.getElementById('qrModal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
         }
 
-        function playWhistle() {
-            const o = ctx.createOscillator(); const g = ctx.createGain();
-            o.type = 'triangle'; o.frequency.value = 2700;
-            g.gain.setValueAtTime(0, ctx.currentTime);
-            g.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.1);
-            g.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 1.5);
-            g.gain.linearRampToValueAtTime(0, ctx.currentTime + 2.0);
-            o.connect(g); g.connect(ctx.destination);
-            o.start(); o.stop(ctx.currentTime + 2.0);
+        const socket = (typeof io !== 'undefined') ? io() : { on: () => {}, emit: () => {} };
+        let currentOptions = []; 
+        let totalVotesCount = 0;
+        
+        let audioCtx = null;
+        function initAudio() { 
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
+            if (audioCtx.state === 'suspended') audioCtx.resume(); 
         }
 
-        let drumInterval = null;
-        function toggleDrum(btn) {
-            if (!drumInterval) {
-                drumInterval = setInterval(() => {
-                    const o = ctx.createOscillator(); const g = ctx.createGain();
-                    o.type = 'square'; o.frequency.value = 180 + Math.random() * 20;
-                    g.gain.setValueAtTime(0.2, ctx.currentTime);
-                    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-                    o.connect(g); g.connect(ctx.destination);
-                    o.start(); o.stop(ctx.currentTime + 0.1);
-                }, 70);
-                btn.innerText = '🥁 ドラム停止';
-            } else {
-                clearInterval(drumInterval); drumInterval = null;
-                btn.innerText = '🥁 ドラムロール';
+        // --- ドラムロール（本格的なスネア連打の物理シミュレーション風） ---
+        let drumNoise = null;
+        let isDrumming = false;
+
+        function startDrumRoll() {
+            initAudio(); stopDrumRoll();
+            const t = audioCtx.currentTime;
+            const sampleRate = audioCtx.sampleRate;
+            const bufferSize = sampleRate * 0.055; 
+            const buffer = audioCtx.createBuffer(1, bufferSize, sampleRate);
+            const data = buffer.getChannelData(0);
+            
+            for (let i = 0; i < bufferSize; i++) {
+                const timeInBeat = i / sampleRate;
+                const noise = Math.random() * 2 - 1;
+                const noiseEnv = Math.exp(-timeInBeat * 60); 
+                const freq = 250 * Math.exp(-timeInBeat * 20);
+                const tone = Math.sin(2 * Math.PI * freq * timeInBeat);
+                const toneEnv = Math.exp(-timeInBeat * 30);
+                const humanize = 0.7 + Math.random() * 0.6; 
+                data[i] = (noise * noiseEnv * 0.6 + tone * toneEnv * 0.4) * humanize;
+            }
+            
+            drumNoise = audioCtx.createBufferSource();
+            drumNoise.buffer = buffer;
+            drumNoise.loop = true; 
+            
+            const drumFilter = audioCtx.createBiquadFilter();
+            drumFilter.type = 'lowpass';
+            drumFilter.frequency.value = 4000;
+            
+            const masterDrumGain = audioCtx.createGain();
+            masterDrumGain.gain.setValueAtTime(0, t);
+            masterDrumGain.gain.linearRampToValueAtTime(0.4, t + 0.1);
+            masterDrumGain.gain.linearRampToValueAtTime(0.8, t + 3.0);
+            
+            drumNoise.connect(drumFilter);
+            drumFilter.connect(masterDrumGain);
+            masterDrumGain.connect(audioCtx.destination);
+            
+            drumNoise.start(t);
+            isDrumming = true;
+            document.getElementById('btnDrum').innerText = '🥁 ドラム停止'; 
+            document.getElementById('btnDrum').style.backgroundColor = '#ffaa00'; 
+            document.getElementById('btnDrum').style.color = '#000';
+            drumNoise._masterGain = masterDrumGain;
+        }
+        
+        function stopDrumRoll() {
+            if (drumNoise && drumNoise._masterGain) {
+                const t = audioCtx.currentTime;
+                try {
+                    drumNoise._masterGain.gain.cancelScheduledValues(t);
+                    drumNoise._masterGain.gain.setValueAtTime(drumNoise._masterGain.gain.value, t);
+                    drumNoise._masterGain.gain.linearRampToValueAtTime(0.001, t + 0.1);
+                    drumNoise.stop(t + 0.2);
+                } catch(e) {}
+                drumNoise = null;
+            }
+            isDrumming = false;
+            document.getElementById('btnDrum').innerText = '🥁 ドラムロール'; 
+            document.getElementById('btnDrum').style.backgroundColor = '#aa00ff'; 
+            document.getElementById('btnDrum').style.color = '#fff';
+        }
+        
+        function toggleDrumRoll() { 
+            if (isDrumming) stopDrumRoll(); 
+            else startDrumRoll(); 
+        }
+
+        function playSound(type) {
+            initAudio(); 
+            const t = audioCtx.currentTime;
+            if (type === 'start') {
+                const freqs = [130.81, 164.81, 196.00, 261.63, 329.63];
+                function playChord(time, duration, vol) {
+                    freqs.forEach(f => {
+                        const osc = audioCtx.createOscillator(); 
+                        const gain = audioCtx.createGain();
+                        osc.type = 'sawtooth'; 
+                        osc.frequency.setValueAtTime(f, time);
+                        const filter = audioCtx.createBiquadFilter();
+                        filter.type = 'lowpass';
+                        filter.frequency.setValueAtTime(2500, time);
+                        gain.gain.setValueAtTime(0, time);
+                        gain.gain.linearRampToValueAtTime(vol, time + 0.02);
+                        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
+                        osc.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+                        osc.start(time); osc.stop(time + duration);
+                    });
+                }
+                playChord(t, 0.2, 0.15); 
+                playChord(t + 0.15, 1.2, 0.3);
+            } else if (type === 'close') {
+                stopDrumRoll();
+                function beep(start, duration) {
+                    const osc1 = audioCtx.createOscillator(); 
+                    const osc2 = audioCtx.createOscillator(); 
+                    const gain = audioCtx.createGain();
+                    osc1.type = 'triangle'; osc2.type = 'triangle';
+                    osc1.frequency.setValueAtTime(2700, start); 
+                    osc2.frequency.setValueAtTime(2750, start); 
+                    gain.gain.setValueAtTime(0, start); 
+                    gain.gain.linearRampToValueAtTime(0.25, start + 0.02); 
+                    gain.gain.linearRampToValueAtTime(0.25, start + duration - 0.05); 
+                    gain.gain.linearRampToValueAtTime(0.001, start + duration);
+                    osc1.connect(gain); osc2.connect(gain); gain.connect(audioCtx.destination);
+                    osc1.start(start); osc1.stop(start + duration);
+                    osc2.start(start); osc2.stop(start + duration);
+                }
+                beep(t, 0.15); beep(t + 0.3, 0.15); beep(t + 0.6, 0.8);
             }
         }
 
-        socket.on('stateUpdate', d => {
-            document.getElementById('qText').innerText = d.question.text;
-            document.getElementById('qNum').innerText = `Q ${d.questionIndex + 1}/8`;
+        socket.on('stateUpdate', (data) => {
+            if (!data || !data.question) {
+                document.getElementById('questionText').innerText = "質問が終了しました（または登録されていません）";
+                document.getElementById('resultsArea').innerHTML = '';
+                document.getElementById('statusDisplay').innerText = "終了";
+                return;
+            }
+            
+            document.getElementById('questionText').innerText = data.question.text;
+            document.getElementById('qNumIndicator').innerText = `Q ${data.questionIndex + 1}/${data.totalQuestions || 8}`;
+            currentOptions = data.question.options;
+            const statusEl = document.getElementById('statusDisplay');
+            if(data.isAcceptingVotes) { 
+                statusEl.innerText = "✅ 回答受付中"; 
+                statusEl.style.color = "#00ffaa"; 
+            } else { 
+                statusEl.innerText = "⛔ 待機中 / 締め切り"; 
+                statusEl.style.color = "#ff0055"; 
+            }
+            
+            renderBars(data.question.options, data.votes);
         });
-        document.getElementById('btnStart').onclick = () => { playStartSound(); socket.emit('adminStartVoting'); };
-        document.getElementById('btnEnd').onclick = () => { playWhistle(); socket.emit('adminCloseVoting'); };
-        document.getElementById('btnDrum').onclick = function() { toggleDrum(this); };
-        document.getElementById('btnNext').onclick = () => socket.emit('adminChangeQuestion', 1);
-        document.getElementById('btnPrev').onclick = () => socket.emit('adminChangeQuestion', -1);
+
+        socket.on('votesUpdated', (data) => { 
+            updateGlobalVotes(data.votes); 
+        });
+
+        function renderBars(options, votes) {
+            const container = document.getElementById('resultsArea'); 
+            container.innerHTML = '';
+            totalVotesCount = votes.reduce((a, b) => a + b, 0);
+            options.forEach((opt, index) => {
+                let percent = totalVotesCount === 0 ? 0 : (votes[index] / totalVotesCount) * 100;
+                const row = document.createElement('div'); 
+                row.className = 'bar-container';
+                row.innerHTML = `
+                    <div class="bar-label-area neon-yellow">
+                        <span>${index + 1}. ${opt}</span>
+                        <span><span id="count${index}">${votes[index]}</span> 票</span>
+                    </div>
+                    <div class="bar-bg">
+                        <div class="bar-fill" id="bar${index}" style="width: ${percent}%;"></div>
+                    </div>`;
+                container.appendChild(row);
+            });
+        }
+
+        function updateGlobalVotes(votesArray) {
+            totalVotesCount = votesArray.reduce((a, b) => a + b, 0);
+            for(let i = 0; i < currentOptions.length; i++) {
+                const countEl = document.getElementById(`count${i}`); 
+                const barEl = document.getElementById(`bar${i}`);
+                if(countEl && barEl) { 
+                    countEl.innerText = votesArray[i]; 
+                    let percent = totalVotesCount === 0 ? 0 : (votesArray[i] / totalVotesCount) * 100; 
+                    barEl.style.width = `${percent}%`; 
+                }
+            }
+        }
+
+        let currentIndex = 0;
+        document.getElementById('btnStart').addEventListener('click', () => { 
+            initAudio(); 
+            playSound('start');
+            socket.emit('adminStartVoting'); 
+        });
+        document.getElementById('btnEnd').addEventListener('click', () => { 
+            initAudio();
+            playSound('close');
+            socket.emit('adminCloseVoting'); 
+        });
+        socket.on('stateUpdate', (data) => { 
+            if(data && data.question) { currentIndex = data.questionIndex; }
+        });
+        document.getElementById('btnNext').addEventListener('click', () => { 
+            socket.emit('adminChangeQuestion', currentIndex + 1); 
+        });
+        document.getElementById('btnPrev').addEventListener('click', () => { 
+            socket.emit('adminChangeQuestion', currentIndex - 1); 
+        });
     </script>
 </body>
 </html>
