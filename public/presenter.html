@@ -3,14 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <title>シンポジウム - プロジェクター画面</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
     <style>
-        body { background-color: #0a0a0a; color: #fff; font-family: sans-serif; text-align: center; padding: 20px; }
+        body { background: #0a0a0a; color: #fff; font-family: sans-serif; margin: 0; padding: 20px; text-align: center; }
         .controls { background: #222; padding: 20px; border-radius: 10px; display: inline-block; border: 1px solid #444; }
         button { font-size: 1.2em; padding: 12px 24px; margin: 5px; cursor: pointer; border-radius: 8px; font-weight: bold; }
+        #qrModal { display: none; position: fixed; top:0; left:0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 999; flex-direction: column; align-items: center; justify-content: center; }
+        .qr-box { background: #fff; padding: 40px; border-radius: 20px; color: #000; }
     </style>
 </head>
 <body>
+    <div id="qrModal" onclick="this.style.display='none'"><div class="qr-box"><h2>スマホで参加</h2><div id="qrcode"></div></div></div>
     <div class="controls">
         <button id="btnPrev">◀ 前</button>
         <span id="qNum" style="margin:0 20px;">Q 1/8</span>
@@ -18,49 +22,48 @@
         <button id="btnStart" style="background:#00ffaa">▶ 質問を発出</button>
         <button id="btnDrum" style="background:#aa00ff; color:#fff">🥁 ドラムロール</button>
         <button id="btnEnd" style="background:#ff0055; color:#fff">■ 締め切り（笛）</button>
+        <button onclick="document.getElementById('qrModal').style.display='flex'">📱 QR表示</button>
     </div>
     <h1 id="qText" style="color:#ffff00; font-size:3em;">読み込み中...</h1>
     
     <script>
         const socket = io();
+        new QRCode(document.getElementById("qrcode"), window.location.origin + '/mobile.html');
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
 
-        // 1. 質問発出音：重厚な「ジャジャン！」
         function playStartSound() {
-            [130.81, 164.81, 196.00].forEach((freq, i) => {
-                const osc = ctx.createOscillator(); const gain = ctx.createGain();
-                osc.type = 'sawtooth'; osc.frequency.value = freq;
-                gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.1);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.1 + 1.2);
-                osc.connect(gain); gain.connect(ctx.destination);
-                osc.start(ctx.currentTime + i * 0.1); osc.stop(ctx.currentTime + i * 0.1 + 1.2);
+            [130.81, 164.81, 196.00].forEach((f, i) => {
+                const o = ctx.createOscillator(); const g = ctx.createGain();
+                o.type = 'sawtooth'; o.frequency.value = f;
+                g.gain.setValueAtTime(0.3, ctx.currentTime + i*0.1);
+                g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i*0.1 + 1.2);
+                o.connect(g); g.connect(ctx.destination);
+                o.start(ctx.currentTime + i*0.1); o.stop(ctx.currentTime + i*0.1 + 1.2);
             });
         }
 
-        // 2. 締め切り笛音：運動会の長いホイッスル
         function playWhistle() {
-            const osc = ctx.createOscillator(); const gain = ctx.createGain();
-            osc.type = 'triangle'; osc.frequency.value = 2700;
-            gain.gain.setValueAtTime(0, ctx.currentTime);
-            gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.1);
-            gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 1.5);
-            gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 2.0);
-            osc.connect(gain); gain.connect(ctx.destination);
-            osc.start(); osc.stop(ctx.currentTime + 2.0);
+            const o = ctx.createOscillator(); const g = ctx.createGain();
+            o.type = 'triangle'; o.frequency.value = 2700;
+            g.gain.setValueAtTime(0, ctx.currentTime);
+            g.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.1);
+            g.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 1.5);
+            g.gain.linearRampToValueAtTime(0, ctx.currentTime + 2.0);
+            o.connect(g); g.connect(ctx.destination);
+            o.start(); o.stop(ctx.currentTime + 2.0);
         }
 
-        // 3. ドラムロール：本格的なスネア連打（擬似ノイズ）
         let drumInterval = null;
         function toggleDrum(btn) {
             if (!drumInterval) {
                 drumInterval = setInterval(() => {
-                    const osc = ctx.createOscillator(); const gain = ctx.createGain();
-                    osc.type = 'square'; osc.frequency.value = 120 + Math.random() * 20;
-                    gain.gain.setValueAtTime(0.1, ctx.currentTime);
-                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
-                    osc.connect(gain); gain.connect(ctx.destination);
-                    osc.start(); osc.stop(ctx.currentTime + 0.08);
-                }, 60);
+                    const o = ctx.createOscillator(); const g = ctx.createGain();
+                    o.type = 'square'; o.frequency.value = 180 + Math.random() * 20;
+                    g.gain.setValueAtTime(0.2, ctx.currentTime);
+                    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+                    o.connect(g); g.connect(ctx.destination);
+                    o.start(); o.stop(ctx.currentTime + 0.1);
+                }, 70);
                 btn.innerText = '🥁 ドラム停止';
             } else {
                 clearInterval(drumInterval); drumInterval = null;
