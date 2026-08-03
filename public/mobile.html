@@ -3,206 +3,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>アンケート回答画面</title>
+    <title>シンポジウム - スマホ投票画面</title>
+    <script src="/socket.io/socket.io.js"></script>
     <style>
-        /* プロジェクター画面に合わせたベースデザイン */
         body { 
             background-color: #0a0a0a; 
             color: #ffffff; 
-            font-family: 'Helvetica Neue', Arial, sans-serif; 
+            font-family: sans-serif; 
             margin: 0; 
-            padding: 15px; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            min-height: 100vh; 
-        }
-        
-        /* グラデーション枠線のコンテナ */
-        .main-container { 
-            width: 100%; 
-            max-width: 500px; 
-            border: 4px solid transparent; 
-            border-radius: 20px; 
-            background-image: linear-gradient(#0a0a0a, #0a0a0a), linear-gradient(to right, #ff0055, #ffaa00, #00ffaa, #00aaff, #aa00ff); 
-            background-origin: border-box; 
-            background-clip: padding-box, border-box; 
-            padding: 30px 20px; 
-            margin-top: 10px; 
+            padding: 20px; 
             text-align: center; 
-            box-sizing: border-box;
         }
-
-        /* 状態表示バッジ */
-        .status-badge { 
-            display: inline-block; 
-            padding: 8px 20px; 
-            border-radius: 25px; 
-            font-weight: bold; 
-            margin-bottom: 25px; 
-            font-size: 1.1em; 
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-        }
-        .status-open { background-color: #00ffaa; color: #000; }
-        .status-closed { background-color: #ff0055; color: #fff; }
-        .status-voted { background-color: #555; color: #fff; }
-
-        /* ネオンイエローの質問文 */
-        h2.neon-yellow { 
+        h1 { 
             color: #ffff00; 
-            text-shadow: 0 0 10px rgba(255, 255, 0, 0.6); 
-            font-size: 1.5em; 
-            margin-top: 0;
+            font-size: 1.8em; 
             margin-bottom: 30px; 
-            line-height: 1.4; 
         }
-
-        /* 選択肢ボタン */
-        .option-btn { 
+        .status-msg { 
+            font-weight: bold; 
+            margin-bottom: 20px; 
+            font-size: 1.2em; 
+        }
+        .option-btn {
             display: block; 
             width: 100%; 
-            background-color: #222; 
+            background: #222; 
             color: #fff; 
-            border: 2px solid #555; 
+            border: 2px solid #444;
             padding: 18px; 
-            margin-bottom: 15px; 
-            border-radius: 12px; 
-            font-size: 1.2em; 
-            font-weight: bold; 
-            cursor: pointer; 
-            transition: all 0.2s ease; 
-            text-align: left; 
-            box-sizing: border-box;
-        }
-        
-        /* ボタンを押したときのエフェクト */
-        .option-btn:active { 
-            transform: scale(0.96); 
-            background-color: #333;
-        }
-        
-        /* 選択できない時のボタン */
-        .option-btn:disabled { 
-            opacity: 0.5; 
-            cursor: not-allowed; 
-            transform: none;
-        }
-
-        /* サンクスメッセージ */
-        .thanks-msg { 
-            display: none; 
-            color: #ffff00; 
-            font-weight: bold; 
-            margin-top: 30px; 
+            margin: 15px 0; 
             font-size: 1.3em; 
-            text-shadow: 0 0 10px rgba(255, 255, 0, 0.5);
+            font-weight: bold;
+            border-radius: 10px; 
+            cursor: pointer;
+            transition: all 0.2s;
         }
-        
-        .header-text {
-            color: #aaa;
-            font-size: 0.9em;
-            margin-bottom: 10px;
+        .option-btn:active { 
+            background: #00ffaa; 
+            color: #000; 
+            border-color: #00ffaa; 
+            transform: scale(0.95); 
+        }
+        .voted-msg { 
+            color: #00ffaa; 
+            font-weight: bold; 
+            display: none; 
+            margin-top: 30px; 
+            font-size: 1.5em; 
         }
     </style>
 </head>
 <body>
+    <div id="statusMsg" class="status-msg" style="color: #ff0055;">投票の開始をお待ちください...</div>
+    <h1 id="qText">質問を読み込み中...</h1>
+    
+    <div id="optionsArea"></div>
+    <div id="votedMsg" class="voted-msg">✅ 投票を受け付けました！</div>
 
-    <div class="header-text">📱 スマホ回答パネル</div>
-
-    <div class="main-container">
-        <!-- ステータス表示 -->
-        <div id="statusBadge" class="status-badge status-closed">待機中</div>
-        
-        <!-- 質問文 -->
-        <h2 id="questionText" class="neon-yellow">プロジェクターの画面をお待ちください...</h2>
-        
-        <!-- 選択肢エリア -->
-        <div id="optionsArea"></div>
-
-        <!-- 投票完了メッセージ -->
-        <div id="thanksMsg" class="thanks-msg">
-            投票完了！<br><br>
-            <span style="font-size: 0.8em; color: #fff; text-shadow: none;">スクリーンをご覧ください</span>
-        </div>
-    </div>
-
-    <!-- 通信機能 -->
-    <script src="/socket.io/socket.io.js"></script>
     <script>
-        // エラーを出さないための安全対策を含む完全版
-        const socket = (typeof io !== 'undefined') ? io() : { on: () => {}, emit: () => {} };
+        const socket = io();
         let currentQuestionIndex = -1;
+        let isAccepting = false;
         let hasVoted = false;
 
-        // 状態を更新する関数
-        function updateStatus(type, text) {
-            const badge = document.getElementById('statusBadge');
-            badge.innerText = text;
-            badge.className = `status-badge status-${type}`;
-        }
-
-        // サーバーから情報を受け取った時の処理
         socket.on('stateUpdate', (data) => {
-            // データが無い（質問終了後など）場合の安全処理
-            if (!data || !data.question) {
-                document.getElementById('questionText').innerText = "本日の質問は終了しました";
-                document.getElementById('optionsArea').innerHTML = '';
-                updateStatus('closed', '終了');
-                return;
-            }
-
-            // 質問が次の問題に切り替わったら、投票済みフラグをリセットする
+            // 質問が変わったら「投票済み」状態をリセットしてボタンを再表示
             if (currentQuestionIndex !== data.questionIndex) {
                 currentQuestionIndex = data.questionIndex;
                 hasVoted = false;
-                document.getElementById('thanksMsg').style.display = 'none';
+                document.getElementById('votedMsg').style.display = 'none';
+                document.getElementById('optionsArea').style.display = 'block';
             }
-
-            // 質問文の表示
-            document.getElementById('questionText').innerText = data.question.text;
-            const optionsArea = document.getElementById('optionsArea');
-            optionsArea.innerHTML = '';
-
-            // 状況に応じたボタンの表示分け
-            if (data.isAcceptingVotes && !hasVoted) {
-                // 回答受付中 ＆ まだ投票していない場合
-                updateStatus('open', '✅ 回答受付中');
-                data.question.options.forEach((opt, idx) => {
-                    const btn = document.createElement('button');
-                    btn.className = 'option-btn';
-                    btn.innerText = `${idx + 1}. ${opt}`;
-                    // タップした時の処理
-                    btn.onclick = () => {
-                        if (!hasVoted) {
-                            hasVoted = true;
-                            socket.emit('vote', idx); // サーバーへ投票を送信
-                            
-                            // スマホがブルッと震える機能（対応機種のみ）
-                            if (navigator.vibrate) navigator.vibrate(50);
-                            
-                            // 投票完了の画面に切り替え
-                            optionsArea.innerHTML = '';
-                            updateStatus('voted', '投票完了');
-                            document.getElementById('thanksMsg').style.display = 'block';
-                        }
-                    };
-                    optionsArea.appendChild(btn);
-                });
-            } else if (hasVoted) {
-                // 投票が完了している場合
-                updateStatus('voted', '投票完了');
-                document.getElementById('thanksMsg').style.display = 'block';
+            
+            isAccepting = data.isAcceptingVotes;
+            
+            // プロジェクター側で「質問を発出」が押されたかどうかの表示
+            const statusEl = document.getElementById('statusMsg');
+            if (isAccepting) {
+                statusEl.innerText = "現在投票受付中です！";
+                statusEl.style.color = "#00ffaa";
             } else {
-                // 待機中（まだ回答受付開始されていない）、または締め切られた場合
-                updateStatus('closed', '⛔ 待機中 / 締め切り');
-                data.question.options.forEach((opt, idx) => {
-                    const btn = document.createElement('button');
-                    btn.className = 'option-btn';
-                    btn.innerText = `${idx + 1}. ${opt}`;
-                    btn.disabled = true; // 押せないようにする
-                    optionsArea.appendChild(btn);
-                });
+                statusEl.innerText = "投票は締め切られました（または開始前です）";
+                statusEl.style.color = "#ff0055";
             }
+
+            document.getElementById('qText').innerText = data.question.text;
+            
+            // 選択肢ボタンの生成
+            const area = document.getElementById('optionsArea');
+            area.innerHTML = '';
+            
+            data.question.options.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'option-btn';
+                btn.innerText = opt;
+                btn.onclick = () => {
+                    if (!isAccepting) {
+                        alert("現在は投票を受け付けていません。プロジェクター画面の開始をお待ちください。");
+                        return;
+                    }
+                    if (hasVoted) {
+                        alert("すでに投票済みです。");
+                        return;
+                    }
+                    
+                    // 【重要】server.jsが要求している正しい合図（submitVote）で票を送る
+                    socket.emit('submitVote', idx);
+                    
+                    hasVoted = true;
+                    area.style.display = 'none';
+                    document.getElementById('votedMsg').style.display = 'block';
+                };
+                area.appendChild(btn);
+            });
         });
     </script>
 </body>
