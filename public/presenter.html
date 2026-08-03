@@ -36,7 +36,6 @@
     
     <div class="main-container">
         <h1 id="qText" style="color:#ffff00; font-size:3em; margin-bottom: 40px;">質問を読み込み中...</h1>
-        <!-- 回答のグラフが反映されるエリア -->
         <div id="resultsArea"></div>
     </div>
 
@@ -45,7 +44,7 @@
         new QRCode(document.getElementById("qrcode"), window.location.origin + '/mobile.html');
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         
-        // 1. 質問発出音
+        // 音響機能
         function playStartSound() {
             [130.81, 164.81, 196.00, 261.63].forEach((f, i) => {
                 const o = ctx.createOscillator(); const g = ctx.createGain();
@@ -57,7 +56,6 @@
             });
         }
         
-        // 2. 締め切り笛音
         function playWhistle() {
             const o1 = ctx.createOscillator(); const o2 = ctx.createOscillator(); const g = ctx.createGain();
             o1.type = 'triangle'; o2.type = 'triangle';
@@ -70,7 +68,6 @@
             o1.start(); o2.start(); o1.stop(ctx.currentTime + 2.0); o2.stop(ctx.currentTime + 2.0);
         }
 
-        // 3. ドラムロール
         let drumInterval = null;
         function toggleDrum(btn) {
             if (!drumInterval) {
@@ -89,43 +86,13 @@
             }
         }
 
-        // 質問と票のデータを記憶しておく
+        // データを記憶する変数
         let currentQuestion = null;
         let currentIndex = 0;
         let currentVotes = [];
 
-        // 画面を更新する処理
-        function updateScreen(d) {
-            if (!d) return;
-
-            // ① 質問データの更新
-            if (d.question) {
-                currentQuestion = d.question;
-            } else if (d.text && d.options) {
-                currentQuestion = d;
-            }
-            if (d.questionIndex !== undefined) {
-                currentIndex = d.questionIndex;
-            }
-
-            // ② 票データの総当たりチェック（あらゆるパターンを予測）
-            if (d.votes) {
-                currentVotes = d.votes;
-            } else if (d.counts) {
-                currentVotes = d.counts;
-            } else if (d.voteCounts) {
-                currentVotes = d.voteCounts;
-            } else if (d.results) {
-                currentVotes = d.results;
-            } else if (currentQuestion && currentQuestion.votes) {
-                currentVotes = currentQuestion.votes;
-            } else if (d.question && d.question.votes) {
-                currentVotes = d.question.votes;
-            } else if (Array.isArray(d)) {
-                currentVotes = d;
-            }
-
-            // まだ質問が一度も来ていなければ表示をスキップ
+        // 画面を描画（更新）する共通関数
+        function renderGraph() {
             if (!currentQuestion) return;
 
             // 質問文と番号の更新
@@ -137,49 +104,48 @@
             area.innerHTML = ''; 
             
             // 全投票数を計算
-            let totalVotes = 0;
-            if (currentVotes) {
-                Object.values(currentVotes).forEach(v => {
-                    totalVotes += (Number(v) || 0);
-                });
-            }
+            const totalVotes = currentVotes.reduce((a, b) => a + b, 0);
 
             // 選択肢とグラフの描画
-            if (currentQuestion.options) {
-                currentQuestion.options.forEach((opt, i) => {
-                    // 票数を安全に取得
-                    const voteCount = (currentVotes && currentVotes[i]) ? Number(currentVotes[i]) : 0;
-                    
-                    // ゲージの長さをパーセンテージで計算（0割りを防ぐ）
-                    const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
-
-                    area.innerHTML += `
-                        <div class="bar-container">
-                            <div class="bar-label-area">
-                                <span>${opt}</span>
-                                <span class="vote-count">${voteCount}票</span>
-                            </div>
-                            <div class="bar-bg">
-                                <div class="bar-fill" style="width: ${percentage}%;"></div>
-                            </div>
+            currentQuestion.options.forEach((opt, i) => {
+                const voteCount = currentVotes[i] || 0;
+                // ゲージの長さをパーセンテージで計算（0割りを防ぐ）
+                const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
+                
+                area.innerHTML += `
+                    <div class="bar-container">
+                        <div class="bar-label-area">
+                            <span>${opt}</span>
+                            <span class="vote-count">${voteCount}票</span>
                         </div>
-                    `;
-                });
-            }
+                        <div class="bar-bg">
+                            <div class="bar-fill" style="width: ${percentage}%;"></div>
+                        </div>
+                    </div>
+                `;
+            });
         }
 
-        // サーバーからどんなイベント名で送られてきても画面を更新する
-        socket.on('stateUpdate', updateScreen);
-        socket.on('voteUpdate', updateScreen);
-        socket.on('update', updateScreen);
-        socket.on('voted', updateScreen);
-        socket.on('newVote', updateScreen);
+        // ① 質問が切り替わった時・最初の接続時の受信
+        socket.on('stateUpdate', (data) => {
+            currentQuestion = data.question;
+            currentIndex = data.questionIndex;
+            currentVotes = data.votes;
+            renderGraph();
+        });
 
+        // ② 参加者が投票した瞬間の受信
+        socket.on('votesUpdated', (data) => {
+            currentVotes = data.votes;
+            renderGraph();
+        });
+
+        // ボタンの操作
         document.getElementById('btnStart').onclick = () => { playStartSound(); socket.emit('adminStartVoting'); };
         document.getElementById('btnEnd').onclick = () => { playWhistle(); socket.emit('adminCloseVoting'); };
         document.getElementById('btnDrum').onclick = function() { toggleDrum(this); };
-        document.getElementById('btnNext').onclick = () => socket.emit('adminChangeQuestion', 1);
-        document.getElementById('btnPrev').onclick = () => socket.emit('adminChangeQuestion', -1);
+        document.getElementById('btnNext').onclick = () => socket.emit('adminChangeQuestion', currentIndex + 1);
+        document.getElementById('btnPrev').onclick = () => socket.emit('adminChangeQuestion', currentIndex - 1);
     </script>
 </body>
 </html>
