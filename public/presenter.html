@@ -12,7 +12,7 @@
         #qrModal { display: none; position: fixed; top:0; left:0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 999; flex-direction: column; align-items: center; justify-content: center; }
         .qr-box { background: #fff; padding: 40px; border-radius: 20px; color: #000; text-align: center; }
         
-        /* グラフ表示用のスタイル（見た目を崩さず復元） */
+        /* グラフ表示用のスタイル */
         .main-container { width: 90%; max-width: 1200px; padding: 20px; text-align: center; }
         .bar-container { margin-bottom: 25px; text-align: left; }
         .bar-label-area { display: flex; justify-content: space-between; font-size: 1.8em; margin-bottom: 10px; font-weight: bold; color: #fff; }
@@ -45,7 +45,7 @@
         new QRCode(document.getElementById("qrcode"), window.location.origin + '/mobile.html');
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         
-        // 1. 質問発出音：重厚なCメジャーコード風和音
+        // 1. 質問発出音
         function playStartSound() {
             [130.81, 164.81, 196.00, 261.63].forEach((f, i) => {
                 const o = ctx.createOscillator(); const g = ctx.createGain();
@@ -57,7 +57,7 @@
             });
         }
         
-        // 2. 締め切り笛音：運動会の長い笛
+        // 2. 締め切り笛音
         function playWhistle() {
             const o1 = ctx.createOscillator(); const o2 = ctx.createOscillator(); const g = ctx.createGain();
             o1.type = 'triangle'; o2.type = 'triangle';
@@ -70,7 +70,7 @@
             o1.start(); o2.start(); o1.stop(ctx.currentTime + 2.0); o2.stop(ctx.currentTime + 2.0);
         }
 
-        // 3. ドラムロール：スネア連打の物理シミュレーション
+        // 3. ドラムロール
         let drumInterval = null;
         function toggleDrum(btn) {
             if (!drumInterval) {
@@ -89,24 +89,43 @@
             }
         }
 
+        // 質問データを記憶しておく（一部のデータだけ送られてきた際に画面が消えないようにする）
+        let currentQuestion = null;
+        let currentIndex = 0;
+
         // 回答を画面（グラフ）に反映させる処理
         socket.on('stateUpdate', d => {
-            if (!d || !d.question) return;
+            if (!d) return;
+
+            // データが送られてきた場合のみ中身を更新
+            if (d.question) currentQuestion = d.question;
+            if (d.questionIndex !== undefined) currentIndex = d.questionIndex;
+
+            // まだ質問が一度も来ていなければ表示をスキップ
+            if (!currentQuestion) return;
 
             // 質問文と番号の更新
-            document.getElementById('qText').innerText = d.question.text;
-            document.getElementById('qNum').innerText = `Q ${d.questionIndex + 1}/8`;
+            document.getElementById('qText').innerText = currentQuestion.text;
+            document.getElementById('qNum').innerText = `Q ${currentIndex + 1}/8`;
             
-            // グラフエリアの更新
+            // グラフエリアをリセット
             const area = document.getElementById('resultsArea');
             area.innerHTML = ''; 
             
-            // 全投票数を計算
-            const totalVotes = d.votes ? d.votes.reduce((a, b) => a + b, 0) : 0;
+            // 全投票数を計算（データがどんな形式でもエラーにならない安全な処理）
+            let totalVotes = 0;
+            if (d.votes) {
+                Object.values(d.votes).forEach(v => {
+                    totalVotes += Number(v);
+                });
+            }
 
-            if (d.question.options) {
-                d.question.options.forEach((opt, i) => {
-                    const voteCount = d.votes ? d.votes[i] : 0;
+            // 選択肢とグラフの描画
+            if (currentQuestion.options) {
+                currentQuestion.options.forEach((opt, i) => {
+                    // 票数を安全に取得
+                    const voteCount = (d.votes && d.votes[i]) ? Number(d.votes[i]) : 0;
+                    
                     // ゲージの長さをパーセンテージで計算（0割りを防ぐ）
                     const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
 
