@@ -89,17 +89,41 @@
             }
         }
 
-        // 質問データを記憶しておく（一部のデータだけ送られてきた際に画面が消えないようにする）
+        // 質問と票のデータを記憶しておく
         let currentQuestion = null;
         let currentIndex = 0;
+        let currentVotes = [];
 
-        // 回答を画面（グラフ）に反映させる処理
-        socket.on('stateUpdate', d => {
+        // 画面を更新する処理
+        function updateScreen(d) {
             if (!d) return;
 
-            // データが送られてきた場合のみ中身を更新
-            if (d.question) currentQuestion = d.question;
-            if (d.questionIndex !== undefined) currentIndex = d.questionIndex;
+            // ① 質問データの更新
+            if (d.question) {
+                currentQuestion = d.question;
+            } else if (d.text && d.options) {
+                currentQuestion = d;
+            }
+            if (d.questionIndex !== undefined) {
+                currentIndex = d.questionIndex;
+            }
+
+            // ② 票データの総当たりチェック（あらゆるパターンを予測）
+            if (d.votes) {
+                currentVotes = d.votes;
+            } else if (d.counts) {
+                currentVotes = d.counts;
+            } else if (d.voteCounts) {
+                currentVotes = d.voteCounts;
+            } else if (d.results) {
+                currentVotes = d.results;
+            } else if (currentQuestion && currentQuestion.votes) {
+                currentVotes = currentQuestion.votes;
+            } else if (d.question && d.question.votes) {
+                currentVotes = d.question.votes;
+            } else if (Array.isArray(d)) {
+                currentVotes = d;
+            }
 
             // まだ質問が一度も来ていなければ表示をスキップ
             if (!currentQuestion) return;
@@ -112,11 +136,11 @@
             const area = document.getElementById('resultsArea');
             area.innerHTML = ''; 
             
-            // 全投票数を計算（データがどんな形式でもエラーにならない安全な処理）
+            // 全投票数を計算
             let totalVotes = 0;
-            if (d.votes) {
-                Object.values(d.votes).forEach(v => {
-                    totalVotes += Number(v);
+            if (currentVotes) {
+                Object.values(currentVotes).forEach(v => {
+                    totalVotes += (Number(v) || 0);
                 });
             }
 
@@ -124,7 +148,7 @@
             if (currentQuestion.options) {
                 currentQuestion.options.forEach((opt, i) => {
                     // 票数を安全に取得
-                    const voteCount = (d.votes && d.votes[i]) ? Number(d.votes[i]) : 0;
+                    const voteCount = (currentVotes && currentVotes[i]) ? Number(currentVotes[i]) : 0;
                     
                     // ゲージの長さをパーセンテージで計算（0割りを防ぐ）
                     const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
@@ -142,7 +166,14 @@
                     `;
                 });
             }
-        });
+        }
+
+        // サーバーからどんなイベント名で送られてきても画面を更新する
+        socket.on('stateUpdate', updateScreen);
+        socket.on('voteUpdate', updateScreen);
+        socket.on('update', updateScreen);
+        socket.on('voted', updateScreen);
+        socket.on('newVote', updateScreen);
 
         document.getElementById('btnStart').onclick = () => { playStartSound(); socket.emit('adminStartVoting'); };
         document.getElementById('btnEnd').onclick = () => { playWhistle(); socket.emit('adminCloseVoting'); };
